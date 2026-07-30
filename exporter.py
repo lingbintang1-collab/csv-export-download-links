@@ -81,7 +81,8 @@ def publish_csv(name, header, rows, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> d
 
 def list_exports() -> list:
     """Past exports still in the bucket. Useful for an 'your downloads' page."""
-    objects = infrai.storage.object.list(BUCKET).get("items", [])
+    response = infrai.storage.object.list(BUCKET)
+    objects = response.get("items", [])
     return [o for o in objects if str(o.get("key", "")).startswith(PREFIX)]
 
 
