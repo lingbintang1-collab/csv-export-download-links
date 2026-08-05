@@ -1,6 +1,6 @@
 # Build a CSV export and give the user a link instead of a stream
 
-The Export button starts out simple: query the table, write CSV into the response, done.
+The Export button starts simple: query the table, write CSV into the response, done.
 Then someone exports a year of orders, the request sits open for three minutes, the load
 balancer cuts it at 60 seconds, and a worker is pinned the whole time holding a string in
 memory. Retrying makes it worse, because the whole file is regenerated from scratch.
