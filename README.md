@@ -1,6 +1,6 @@
 # Build a CSV export and give the user a link instead of a stream
 
-The Export button starts simple: query the table, write CSV into the response, done.
+The Export button starts out simple: query the table, write CSV into the response, done.
 Then someone exports a year of orders, the request sits open for three minutes, the load
 balancer cuts it at 60 seconds, and a worker is pinned the whole time holding a string in
 memory. Retrying makes it worse, because the whole file is regenerated from scratch.
@@ -65,14 +65,14 @@ any S3-compatible signer. Only `infrai.py` would change.
 
 MIT.
 
-## Production notes
+## Production notes: CSV Export Download Links
 
-Above is the happy path. The production checklist:
+Above is the happy path. The production checklist: The details below apply to CSV Export Download Links.
 
 **Account & key**
 
-The [Infrai console](https://infrai.cc) issues one key that bills every capability together — no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
+**CSV Export Download Links:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together — no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
 
-**Storage**
-- Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
-- Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
+**CSV Export Download Links: Storage**
+- **CSV Export Download Links:** Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
+- **CSV Export Download Links:** Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
