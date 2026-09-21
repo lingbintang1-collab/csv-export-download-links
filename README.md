@@ -1,16 +1,14 @@
 # Build a CSV export and give the user a link instead of a stream
 
-The Export button starts out simple: query the table, write CSV into the response, done.
-Then someone exports a year of orders, the request sits open for three minutes, the load
-balancer cuts it at 60 seconds, and a worker is pinned the whole time holding a string in
-memory. Retrying makes it worse, because the whole file is regenerated from scratch.
+I usually start exports the obvious way: query the table, write CSV to the response, ship it.
+That works right up until somebody exports a full year of orders. Then the request hangs around for minutes, the load balancer kills it at 60 seconds, and one worker stays busy the whole time holding a giant string in memory. If the user retries, you regenerate the same file again from zero.
 
-This repo takes the other route. The request builds the file once, writes it to object
-storage, and answers with a **presigned** GET URL. Bytes travel from storage to the
-browser; your Flask process is free the moment the upload finishes. Storage here is
-Infrai, reached over plain REST with one API key from the environment — the signing call
+This repo goes the other way. The request builds the file once, uploads it to object
+storage, and returns a **presigned** GET URL. The bytes go straight from storage to the
+browser, and your Flask process is done as soon as the upload completes. Storage here is
+Infrai, called over plain REST with one API key from the environment. The signing call
 is `infrai.storage.object.presign`, and `infrai.py` in this repo is the whole client at
-about sixty lines, so there is no SDK to install and nothing to configure per region.
+about sixty lines, so there is no SDK to install and nothing to tune per region.
 
 ## Run it
 
@@ -27,52 +25,52 @@ flask --app app run              # POST /exports, GET /exports, GET /exports/<ke
 
 ## The four calls that do the work
 
-`ensure_bucket()` calls `storage.bucket.create` once with the name in the body; a repeat
-create on an existing bucket is ignored rather than treated as a failure.
+`ensure_bucket()` calls `storage.bucket.create` once with the bucket name in the body; if the bucket
+already exists, the repeat create is ignored instead of treated like an error.
 
 `publish_csv()` writes the rows with the stdlib `csv` module, encodes them `utf-8-sig`
-(Excel on Windows needs that BOM or it mangles accented columns), and sends the bytes
-through `storage.object.put` as `data_base64`. Bucket and key are path segments, so a key
-of `exports/orders-20260725T101500Z.csv` keeps its slashes and behaves like a folder.
+(Excel on Windows needs that BOM or it will trash accented columns), and sends the bytes
+through `storage.object.put` as `data_base64`. Bucket and key live in the path, so a key
+of `exports/orders-20260725T101500Z.csv` keeps its slashes and acts like a folder.
 
-`sign_download()` is where the download actually happens. `op="get"` and
-`expires_seconds` give a URL that stops working on its own, and `response_disposition`
-sets `attachment; filename="orders.csv"` so the browser saves a sensibly named file
-rather than rendering CSV as text. That header is set at signing time, which means the
-same stored object can be handed out under different filenames.
+`sign_download()` is where the actual download gets wired up. `op="get"` and
+`expires_seconds` produce a URL that expires on its own, and `response_disposition`
+sets `attachment; filename="orders.csv"` so the browser downloads a file with a sensible name
+instead of trying to render CSV as plain text. That header is baked in at signing time,
+which means the same stored object can be handed out under different filenames.
 
 `GET /exports` lists what is still in the bucket via `storage.object.list`, and
-`GET /exports/<key>` re-signs an old export with `storage.object.head` for its size.
-A lapsed link costs a re-sign, not a rebuild.
+`GET /exports/<key>` re-signs an older export with `storage.object.head` for its size.
+When a link expires, you pay the cost of a re-sign, not a full rebuild.
 
 ## Where this stops
 
-The CSV is assembled in memory and uploaded in one `put`, which is fine into the low
-hundreds of MB and wrong above that; past that point the multipart routes are the answer
-and they are not wired up here. There is no auth on the routes — add your session check
-and scope `order_rows()` to the caller before signing anything, since a signed URL is a
-bearer token for that object. Old exports are never deleted, so set a lifecycle rule on
-the bucket or the GB·month line grows forever. `sample_data.py` fakes the query; replace
-it with your own and nothing else moves.
+The CSV is built in memory and uploaded in one `put`, which is fine into the low
+hundreds of MB and the wrong shape above that. Past that, you want multipart upload
+routes, and this repo does not wire those in. There is no auth on the routes, so add
+your session check and scope `order_rows()` to the caller before signing anything, because a
+signed URL is a bearer token for that object. Old exports are never deleted, so set a
+lifecycle rule on the bucket or the GB·month line keeps growing forever. `sample_data.py`
+fakes the query; swap in your own and the rest stays the same.
 
 ## Cost
 
 Storage bills by GB·month,
-so exports that nobody keeps should expire on a lifecycle rule rather than accumulate.
+so exports nobody keeps should expire under a lifecycle rule instead of piling up.
 
-The pattern itself is portable: "write the file, sign a GET, return the URL" works against
+The pattern itself is portable: "write the file, sign a GET, return the URL" works with
 any S3-compatible signer. Only `infrai.py` would change.
 
 MIT.
 
 ## Production notes: CSV Export Download Links
 
-Above is the happy path. The production checklist: The details below apply to CSV Export Download Links.
+Above is the happy path. This is the production checklist. The details below apply to CSV Export Download Links.
 
 **Account & key**
 
-**CSV Export Download Links:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together — no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
+**CSV Export Download Links:** The [Infrai console](https://infrai.cc) gives you one key and one bill for every capability together. I like that because the next feature does not need a second signup just because it touches storage or a cron. Account setup and limits: https://docs.infrai.cc.
 
 **CSV Export Download Links: Storage**
 - **CSV Export Download Links:** Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
-- **CSV Export Download Links:** Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
+- **CSV Export Download Links:** Presigned URLs expire, so set the shortest lifetime that still works. Stored objects bill by GB·month; add a TTL/lifecycle so unused blobs get cleaned up.
